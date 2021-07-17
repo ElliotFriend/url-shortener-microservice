@@ -4,6 +4,7 @@ const express = require('express');
 const cors = require('cors');
 const mongoose = require('mongoose');
 const bodyParser = require('body-parser');
+const { nanoid } = require('nanoid')
 const app = express();
 
 
@@ -18,8 +19,8 @@ const urlSchema = new Schema({
     required: true,
   },
   shortURL: {
-    type: Number,
-    required: true,
+    type: String,
+    default: () => nanoid(10),
   },
   numberClicks: {
     type: Number,
@@ -27,12 +28,6 @@ const urlSchema = new Schema({
   }
 });
 const ShortenedURL = mongoose.model('ShortenedURL', urlSchema);
-
-const createAndSaveURL = (validURL, done) => {
-  let shortURL = new ShortenedURL({
-    originalURL: validURL,
-  })
-}
 
 const findURLById = (urlId, done) => {
   ShortenedURL.findById(urlId, (err, data) => {
@@ -55,7 +50,7 @@ app.get('/api/hello', function(req, res) {
   res.json({ greeting: 'hello API' });
 });
 
-app.post('/api/shorturl', (req, res) => {
+app.post('/api/shorturl', async function(req, res) {
   let invalidResponse = { error: 'invalid url' };
   let re = /^https?\:\/\//;
   let inputURL = req.body.url;
@@ -63,9 +58,22 @@ app.post('/api/shorturl', (req, res) => {
   if (!re.test(req.body.url)) return res.json(invalidResponse);
   dns.lookup(inputURL.replace(re, ''), (err, address, family) => {
     if (err) {console.log(err); return res.json(invalidResponse);}
-    res.json({ original_url: inputURL });
   });
+
+  let shortURL = new ShortenedURL({
+    originalURL: inputURL,
+  });
+  let shortDoc = await shortURL.save();
+
+  res.json({ original_url: inputURL, short_url: shortDoc.shortURL });
 });
+
+app.get('/api/shorturl/:shorturl', async function(req, res) {
+  let nanoId = req.params.shorturl;
+  let doc = await ShortenedURL.findOneAndUpdate({ shortURL: nanoId }, { $inc: { numberClicks: 1 } })
+  
+  res.redirect(doc.originalURL);
+})
 
 app.listen(port, function() {
   console.log(`Listening on port ${port}`);
